@@ -1,5 +1,5 @@
-import asyncio,aiomysql,logging
-
+import aiomysql,logging
+import asyncio
 #创建连接池
 async def create_pool(loop,**kw):
     logging.info("create database connection pool ...")
@@ -96,7 +96,7 @@ class TextField(Field):
 而在 __init__() 启动之前,__new__() 决定是否要使用该 __init__() 方法,
 因为__new__() 可以调用其他类的构造方法或者直接返回别的对象来作为本类的实例.
 '''
-class ModelMetaclass(type):
+#class ModelMetaclass(type):
 
 
 
