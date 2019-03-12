@@ -95,8 +95,42 @@ class TextField(Field):
 可以这么理解,在 Python 中存在于类里面的构造方法 __init__() 负责将类的实例化,
 而在 __init__() 启动之前,__new__() 决定是否要使用该 __init__() 方法,
 因为__new__() 可以调用其他类的构造方法或者直接返回别的对象来作为本类的实例.
+__new__()方法接收到的参数依次是：
+cls为当前准备创建的类的对象 
+name为类的名字，创建User类，则name便是User
+bases类继承的父类集合,创建User类，则base便是Model
+attrs为类的属性/方法集合，创建User类，则attrs便是一个包含User类属性的dict
 '''
-#class ModelMetaclass(type):
+class ModelMetaclass(type):
+    def __new__(cls,name,bases,attrs):
+        #排除Model类本身
+        if name == 'Model':
+            return type.__new__(cls,name,bases,attrs)
+        #获取table名称
+        tableName = attrs.get('__table__',None) or name
+        logging.info('found model:%s (table:%s)' %(name,tableName))
+        #存储所有的字段
+        mapping = dict()
+        #仅用来存储非主键以外的其它字段，而且只存key
+        fields=[]
+        #保存主键的key
+        primaryKey = None
+        # 注意这里attrs的key是字段名，value是字段实例，不是字段的具体值
+        # 比如User类的id=StringField(...) 这个value就是这个StringField的一个实例，而不是实例化
+        # 的时候传进去的具体id值
+        for k,v in attrs.items():
+            if isinstance(v,Field):
+                mapping[k] = v
+                if v.primary_key:
+                    #找到主键
+                    if primaryKey:
+                        raise RuntimeError('Duplicate primary key for field: %s' % k)
+                    primaryKey = k
+                else:
+                    fields.append(k)
+        if not primaryKey:
+            raise RuntimeError('PrimaryKey not found')
+
 
 
 
