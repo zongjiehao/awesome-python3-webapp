@@ -130,6 +130,9 @@ class ModelMetaclass(type):
                     fields.append(k)
         if not primaryKey:
             raise RuntimeError('PrimaryKey not found')
+        for k in mapping.keys():
+            attrs.pop(k)
+        print('hello world')
 
 
 
