@@ -110,7 +110,7 @@ class ModelMetaclass(type):
         tableName = attrs.get('__table__',None) or name
         logging.info('found model:%s (table:%s)' %(name,tableName))
         #存储所有的字段
-        mapping = dict()
+        mappings = dict()
         #仅用来存储非主键以外的其它字段，而且只存key
         fields=[]
         #保存主键的key
@@ -120,7 +120,7 @@ class ModelMetaclass(type):
         # 的时候传进去的具体id值
         for k,v in attrs.items():
             if isinstance(v,Field):
-                mapping[k] = v
+                mappings[k] = v
                 if v.primary_key:
                     #找到主键
                     if primaryKey:
@@ -130,9 +130,35 @@ class ModelMetaclass(type):
                     fields.append(k)
         if not primaryKey:
             raise RuntimeError('PrimaryKey not found')
-        for k in mapping.keys():
+        for k in mappings.keys():
             attrs.pop(k)
-        print('hello world')
+        escaped_fields = list(map(lambda f: '`%s`' % f, fields))
+        attrs['__mappings__'] = mappings # 保存属性和列的映射关系
+        attrs['__table__'] = tableName
+        attrs['__primary_key__'] = primaryKey # 主键属性名
+        attrs['__fields__'] = fields # 除主键外的属性名
+        attrs['__select__'] = "select %s, %s from %s" % (primaryKey, ', '.join(escaped_fields), tableName)
+        attrs['__insert__'] = "insert into %s (%s, %s) values (%s)" % (tableName, ', '.join(escaped_fields), primaryKey, create_args_string(len(escaped_fields) + 1))
+        attrs['__update__'] = "update %s set %s where %s=?" % (tableName, ', '.join(map(lambda f: '`%s`=?' % (mappings.get(f).name or f), fields)), primaryKey)
+        attrs['__delete__'] = "delete from %s where %s=? " % (tableName, primaryKey)
+        return type.__new__(cls, name, bases, attrs)
+
+class Model(dict,metaclass=ModelMetaclass):
+    def __init__(self,**kw):
+        super().__init__(**kw)
+
+    def __getattr__(self, key):
+        try:
+            return self[key]
+        except:
+            raise AttributeError(r"'Model' object has no attribute '%s'" % key)
+
+    def __setattr__(self, key, value):
+        self[key] = value
+
+    def get_value(self,key):
+        return getattr(self,key,None)
+
 
 
 
