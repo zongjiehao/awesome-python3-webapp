@@ -9,7 +9,7 @@ def get(path):
         def wrapper(*args,**kw):
             return func(*args,**kw)
         wrapper.__method__ = 'GET'
-        wrapper.__route__ = 'path'
+        wrapper.__route__ = path
         return wrapper
     return decorator
 
@@ -20,7 +20,7 @@ def post(path):
         def wrapper(*args,**kw):
             return func(*args,**kw)
         wrapper.__method__ = 'POST'
-        wrapper.__route__ = 'path'
+        wrapper.__route__ = path
         return wrapper
     return decorator
 '''
@@ -41,6 +41,14 @@ def get_required_kw_args(fn):
         if param.kind ==inspect.Parameter.KEYWORD_ONLY and param.default==inspect.Parameter.empty:
             args.append(name)
     return tuple(args)
+#收集命名关键字参数
+def get_named_kw_args(fn):
+    args = []
+    params = inspect.signature(fn).parameters
+    for name, param in params.items():
+        if param.kind == inspect.Parameter.KEYWORD_ONLY:
+            args.append(name)
+    return tuple(args)
 
 #判断是否有命名关键字参数
 def has_named_kw_args(fn):
@@ -50,20 +58,37 @@ def has_named_kw_args(fn):
             return True
 
 #判断有没有关键字参数
-def has_var_kw_args(fn):
+def has_var_kw_arg(fn):
     params = inspect.signature(fn).parameters
     for name, param in params.items():
         if param.kind == inspect.Parameter.VAR_KEYWORD:
             return True
 
 #判断是否有名叫'request'的参数,且该参数是否为最后一个参数
-# def has_request_kw_args(fn):
-#     params = inspect.signature(fn).parameters
-#     found = False
-#     for name, param in params.items():
-#         if name == 'request':
-#             found = True
-#             continue
-#         if found
+def has_request_arg(fn):
+    params = inspect.signature(fn).parameters
+    found = False
+    for name, param in params.items():
+        if name == 'request':
+            found = True
+            continue
+        if found and param.kind == inspect.Parameter.POSITIONAL_ONLY:
+            raise ValueError(
+                'request parameter must be the last named parameter in function: %s%s' % (fn.__name__, str(inspect.signature(fn))))
+    return found
 
+'''
+RequestHandler目的就是从URL函数中分析其需要接收的参数，从request中获取必要的参数，
+URL函数不一定是一个coroutine，因此我们用RequestHandler()来封装一个URL处理函数。
+调用URL函数，然后把结果转换为web.Response对象，这样，就完全符合aiohttp框架的要求：
+'''
+class RequestHandler(object):# 初始化一个请求处理类
+    def __init__(self, app, fn):
+        self._app = app
+        self._func = fn
+        self._has_request_arg = has_request_arg(fn)
+        self._has_var_kw_arg = has_var_kw_arg(fn)
+        self._has_named_kw_args = has_named_kw_args(fn)
+        self._named_kw_args = get_named_kw_args(fn)
+        self._required_kw_args = get_required_kw_args(fn)
 
