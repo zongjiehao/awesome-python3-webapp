@@ -1,7 +1,7 @@
 import os,asyncio,inspect,logging,functools
 from urllib import parse
 from aiohttp import web
-
+from www.apis import APIError
 #定义装饰器@get('/path')
 def get(path):
     def decorator(func):
@@ -92,3 +92,73 @@ class RequestHandler(object):# 初始化一个请求处理类
         self._named_kw_args = get_named_kw_args(fn)
         self._required_kw_args = get_required_kw_args(fn)
 
+    async def __call__(self, request):#一个类实现了__call__方法()，就可以把类当实例调用
+        kw = None
+        if self._has_var_kw_arg or self._has_named_kw_args or self._has_request_args:
+            if request.method == 'POST':
+                if not request.content_type:
+                    return web.HTTPBadRequest(text='Missing Content-Type')
+                ct = request.content_type.lower()
+                #json格式的请求
+                if ct.startwith('application/json'):
+                    #返回body中的json串，如果body中不是json会抛出异常
+                    params = await request.json()
+                    if not isinstance(params.dict):
+                        return web.HTTPBadRequest(text='Json body must be object')
+                    kw = params
+                #form表单请求的编码格式
+                elif ct.startswith('application/x-www-form-urlencoded') or ct.startswith('multipart/form-data'):
+                    # 返回post的内容中解析后的数据。dict-like对象
+                    params = await request.post()
+                    kw = dict(**params)
+                else:
+                    return web.HTTPBadRequest(text='Unsupported Content-Type: %s' % request.content_type)
+            if request.method == 'GET':
+                # 返回URL查询语句，?后的键值。string形式。
+                qs = request.query_string
+                if qs:
+                    kw=dict()
+                    #true表示不忽略空格
+                    '''
+                    解析url中?后面的键值对的内容 
+                    qs = 'first=f,s&second=s' 
+                    parse.parse_qs(qs, True).items() 
+                    >>> dict([('first', ['f,s']), ('second', ['s'])]) 
+                    '''
+                    for k, v in parse.parse_qs(qs,True).items():
+                        kw[k] == v[0]
+        if kw is None:#如果request中没有参数
+            # request.match_info返回dict对象。可变路由中的可变字段{variable}为参数名，传入request请求的path为值
+            # 若存在可变路由：/a/{name}/c，可匹配path为：/a/jack/c的request
+            # 则request.match_info返回{name = jack}
+            kw = dict(**request.match_info)
+        else:
+            if not self._has_var_kw_arg and self._named_kw_args:
+                copy = dict()
+            #只保留命名关键字参数
+            for name in self._named_kw_args:
+                if name in kw:
+                    copy[name] = kw[name]
+                kw = copy
+            #检查kw中的参数是否和match_info中的相同
+            for k, v in request.match_info.items():
+                #检查kw中的参数是否和match_info中的相同
+                if k in kw:
+                    logging.warning('Duplicate arg name in named arg and kw args: %s' % k)
+                kw[k] = v
+        #视图函数中存在request参数
+        if self._has_request_arg:
+            kw['request'] = request
+            # check required kw:
+        #视图函数中存在没有默认值的命名关键字参数
+        if self._required_kw_args:
+            for name in self._required_kw_args:
+                #如果没有传入必须的参数
+                if not name in kw:
+                    return web.HTTPBadRequest(text='Missing argument: %s' % name)
+        logging.info('call with args: %s' % str(kw))
+        try:
+            r = await self._func(**kw)
+            return r
+        except APIError as e:
+            return dict(error=e.error, data=e.data, message=e.message)
