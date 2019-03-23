@@ -209,6 +209,7 @@ class RequestHandler(object):# 初始化一个请求处理类
                 path = getattr(fn, '__route__', None)
                 if method and path:
                     add_route(app,fn)
+                    print('1')
 
 
 
