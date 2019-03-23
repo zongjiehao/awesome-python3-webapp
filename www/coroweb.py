@@ -82,6 +82,10 @@ RequestHandler目的就是从URL函数中分析其需要接收的参数，从req
 URL函数不一定是一个coroutine，因此我们用RequestHandler()来封装一个URL处理函数。
 调用URL函数，然后把结果转换为web.Response对象，这样，就完全符合aiohttp框架的要求：
 '''
+
+
+
+
 class RequestHandler(object):# 初始化一个请求处理类
     def __init__(self, app, fn):
         self._app = app
@@ -162,3 +166,50 @@ class RequestHandler(object):# 初始化一个请求处理类
             return r
         except APIError as e:
             return dict(error=e.error, data=e.data, message=e.message)
+
+    #添加静态文件如image，css，javascript等
+    def add_static(app):
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)),'static')
+        #添加静态路由
+        app.router.add_static('/static/',path)
+        logging.info('add static %s => %s' %('/static/',path))
+
+    #用来注册视图函数
+    def add_route(app,fn):
+        method = getattr(fn,'__method__',None)
+        path = getattr(fn,'__route__',None)
+        if path is None or method is None:
+            raise ValueError('@get or @post is not define in %s' % str(fn))
+        if not asyncio.iscoroutinefunction(fn) or not inspect.isgeneratorfunction(fn):
+            fn = asyncio.coroutine(fn)
+        logging.info('add route %s %s => %s(%s)' % (
+        method, path, fn.__name__, ', '.join(inspect.signature(fn).parameters.keys())))
+        app.router.add_route(method, path, RequestHandler(app, fn))
+
+    #批量注册视图函数
+    def add_routes(app,module_name):
+        n = module_name.rfind('.')
+        if n == -1:
+            # __import__ 作用同import语句，但__import__是一个函数，并且只接收字符串作为参数
+            # __import__('os',globals(),locals(),['path','pip'], 0) ,等价于from os import path, pip
+            mod = __import__(module_name,globals(),locals())
+        else:
+            name = module_name[n+1]
+            # 只获取最终导入的模块，为后续调用dir()
+            mod = getattr(__import__(module_name[:n],globals(),locals(),[name]),name)
+        for attr in dir(mod):
+            #忽略'_'开头的对象
+            if attr.startswith('_'):
+                continue
+            fn = getattr(mod,attr)
+            #确保是函数
+            if callable(fn):
+                #确保视图函数存在method和path中
+                method = getattr(fn, '__method__', None)
+                path = getattr(fn, '__route__', None)
+                if method and path:
+                    add_route(app,fn)
+
+
+
+
