@@ -18,5 +18,9 @@ class Dict(dict):
     def merge(defaults,override):
         r = {}
         for k, v in defaults.items():
-            pass
+            if k in override:#生产环境配置有此参数
+                if isinstance(v,dict):#判断其value是否是字典
+                    r[k] = merge(v,override[k])
+                else:
+                    r[k] = override[k]
 
